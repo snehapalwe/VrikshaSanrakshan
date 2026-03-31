@@ -1,0 +1,313 @@
+<?php 
+/**
+ * Accept_reject2 Page Controller
+ * @category  Controller
+ */
+class Accept_reject2Controller extends SecureController{
+	function __construct(){
+		parent::__construct();
+		$this->tablename = "accept_reject2";
+	}
+	/**
+     * List page records
+     * @param $fieldname (filter record by a field) 
+     * @param $fieldvalue (filter field value)
+     * @return BaseView
+     */
+	function index($fieldname = null , $fieldvalue = null){
+		$request = $this->request;
+		$db = $this->GetModel();
+		$tablename = $this->tablename;
+		$fields = array("id", 
+			"rec_id", 
+			"remark", 
+			"timestamp", 
+			"db_name", 
+			"status", 
+			"action", 
+			"upload_rejection_note");
+		$pagination = $this->get_pagination(MAX_RECORD_COUNT); // get current pagination e.g array(page_number, page_limit)
+		//search table record
+		if(!empty($request->search)){
+			$text = trim($request->search); 
+			$search_condition = "(
+				accept_reject2.id LIKE ? OR 
+				accept_reject2.rec_id LIKE ? OR 
+				accept_reject2.remark LIKE ? OR 
+				accept_reject2.timestamp LIKE ? OR 
+				accept_reject2.db_name LIKE ? OR 
+				accept_reject2.status LIKE ? OR 
+				accept_reject2.action LIKE ? OR 
+				accept_reject2.upload_rejection_note LIKE ?
+			)";
+			$search_params = array(
+				"%$text%","%$text%","%$text%","%$text%","%$text%","%$text%","%$text%","%$text%"
+			);
+			//setting search conditions
+			$db->where($search_condition, $search_params);
+			 //template to use when ajax search
+			$this->view->search_template = "accept_reject2/search.php";
+		}
+		if(!empty($request->orderby)){
+			$orderby = $request->orderby;
+			$ordertype = (!empty($request->ordertype) ? $request->ordertype : ORDER_TYPE);
+			$db->orderBy($orderby, $ordertype);
+		}
+		else{
+			$db->orderBy("accept_reject2.id", ORDER_TYPE);
+		}
+		if($fieldname){
+			$db->where($fieldname , $fieldvalue); //filter by a single field name
+		}
+		$tc = $db->withTotalCount();
+		$records = $db->get($tablename, $pagination, $fields);
+		$records_count = count($records);
+		$total_records = intval($tc->totalCount);
+		$page_limit = $pagination[1];
+		$total_pages = ceil($total_records / $page_limit);
+		$data = new stdClass;
+		$data->records = $records;
+		$data->record_count = $records_count;
+		$data->total_records = $total_records;
+		$data->total_page = $total_pages;
+		if($db->getLastError()){
+			$this->set_page_error();
+		}
+		$page_title = $this->view->page_title = "Accept Reject2";
+		$this->view->report_filename = date('Y-m-d') . '-' . $page_title;
+		$this->view->report_title = $page_title;
+		$this->view->report_layout = "report_layout.php";
+		$this->view->report_paper_size = "A4";
+		$this->view->report_orientation = "portrait";
+		$this->render_view("accept_reject2/list.php", $data); //render the full page
+	}
+	/**
+     * View record detail 
+	 * @param $rec_id (select record by table primary key) 
+     * @param $value value (select record by value of field name(rec_id))
+     * @return BaseView
+     */
+	function view($rec_id = null, $value = null){
+		$request = $this->request;
+		$db = $this->GetModel();
+		$rec_id = $this->rec_id = urldecode($rec_id);
+		$tablename = $this->tablename;
+		$fields = array("id", 
+			"rec_id", 
+			"remark", 
+			"timestamp", 
+			"db_name", 
+			"status", 
+			"action", 
+			"upload_rejection_note");
+		if($value){
+			$db->where($rec_id, urldecode($value)); //select record based on field name
+		}
+		else{
+			$db->where("accept_reject2.id", $rec_id);; //select record based on primary key
+		}
+		$record = $db->getOne($tablename, $fields );
+		if($record){
+			$page_title = $this->view->page_title = "View  Accept Reject2";
+		$this->view->report_filename = date('Y-m-d') . '-' . $page_title;
+		$this->view->report_title = $page_title;
+		$this->view->report_layout = "report_layout.php";
+		$this->view->report_paper_size = "A4";
+		$this->view->report_orientation = "portrait";
+		}
+		else{
+			if($db->getLastError()){
+				$this->set_page_error();
+			}
+			else{
+				$this->set_page_error("No record found");
+			}
+		}
+		return $this->render_view("accept_reject2/view.php", $record);
+	}
+	/**
+     * Insert new record to the database table
+	 * @param $formdata array() from $_POST
+     * @return BaseView
+     */
+	function add($formdata = null){
+		if($formdata){
+			$db = $this->GetModel();
+			$tablename = $this->tablename;
+			$request = $this->request;
+			//fillable fields
+			$fields = $this->fields = array("db_name","rec_id","status","remark","upload_rejection_note");
+			$postdata = $this->format_request_data($formdata);
+			$this->rules_array = array(
+				'db_name' => 'required',
+				'rec_id' => 'required',
+				'status' => 'required',
+				'remark' => 'required',
+			);
+			$this->sanitize_array = array(
+				'db_name' => 'sanitize_string',
+				'rec_id' => 'sanitize_string',
+				'status' => 'sanitize_string',
+				'remark' => 'sanitize_string',
+				'upload_rejection_note' => 'sanitize_string',
+			);
+			$this->filter_vals = true; //set whether to remove empty fields
+			$modeldata = $this->modeldata = $this->validate_form($postdata);
+			if($this->validated()){
+		# Statement to execute before adding record
+$db_name = $modeldata['db_name'];
+$rec_id = $modeldata['rec_id'];
+$db->where("id",$rec_id);
+$rec       = $db->getOne($db_name,"*");
+$newstatus = "";
+if($modeldata['status']=="ACCEPT"){
+    if(USER_ROLE==2 && $rec['status']+0==2){
+    $newstatus = "7";
+    }
+    if(USER_ROLE==7 && $rec['status']+0==7){
+    $newstatus = "9";
+    }
+    if(USER_ROLE==9 && $rec['status']+0==13){
+    $newstatus = "10";
+    }
+    if(USER_ROLE==9 && $rec['status']+0==9){
+    $newstatus = "10";
+    }
+    if(USER_ROLE==10  && $rec['status']+0==10){ 
+        if($db_name=="occupancy_certificate"){
+        $date = date("Y-m-d");
+        for($i=0;$i<14;$i++){
+            $newdate = date("Y-m-d",strtotime($date)+(($i+1)*180*24*60*60));
+            $db->insert("tree_report_matrix",[
+                "rec_id"=>$rec_id,
+                "date"=>$newdate
+            ]);
+        }
+        }
+    $newstatus = "11";
+    }
+}else{
+    if($modeldata['status']=="REVERT"){
+    $newstatus = "-100" ;
+}else{
+    $newstatus = "-2" ;
+}
+}
+
+ 
+if($modeldata['status'] == "ACCEPT" && USER_ROLE == 10 && $db_name == "commencement_certificate" ){
+ $outno=$db->getOne($db_name,"MAX(outward_no) as num")['num']+1;
+ 
+  $db->where("id",$modeldata['rec_id']);
+$db->update("commencement_certificate", ["outward_no"=>$outno]);
+}
+if($modeldata['status'] == "ACCEPT" && USER_ROLE == 10 && $db_name == "occupancy_certificate" ){
+
+ $outno=$db->getOne($db_name,"MAX(outward_oc) as num")['num']+1;
+ 
+  $db->where("id",$modeldata['rec_id']);
+$db->update("occupancy_certificate", ["outward_oc"=>$outno]);
+}
+
+
+
+$db->where("id",$rec_id);
+$db->update($db_name,["status"=>$newstatus]);
+		# End of before add statement
+				$rec_id = $this->rec_id = $db->insert($tablename, $modeldata);
+				if($rec_id){
+					$this->set_flash_msg("Record added successfully", "success");
+					return	$this->redirect("$db_name");
+				}
+				else{
+					$this->set_page_error();
+				}
+			}
+		}
+		$page_title = $this->view->page_title = "Add New Accept Reject2";
+		$this->render_view("accept_reject2/add.php");
+	}
+	/**
+     * Update table record with formdata
+	 * @param $rec_id (select record by table primary key)
+	 * @param $formdata array() from $_POST
+     * @return array
+     */
+	function edit($rec_id = null, $formdata = null){
+		$request = $this->request;
+		$db = $this->GetModel();
+		$this->rec_id = $rec_id;
+		$tablename = $this->tablename;
+		 //editable fields
+		$fields = $this->fields = array("id","db_name","rec_id","status","remark","upload_rejection_note");
+		if($formdata){
+			$postdata = $this->format_request_data($formdata);
+			$this->rules_array = array(
+				'db_name' => 'required',
+				'rec_id' => 'required',
+				'status' => 'required',
+				'remark' => 'required',
+			);
+			$this->sanitize_array = array(
+				'db_name' => 'sanitize_string',
+				'rec_id' => 'sanitize_string',
+				'status' => 'sanitize_string',
+				'remark' => 'sanitize_string',
+				'upload_rejection_note' => 'sanitize_string',
+			);
+			$modeldata = $this->modeldata = $this->validate_form($postdata);
+			if($this->validated()){
+				$db->where("accept_reject2.id", $rec_id);;
+				$bool = $db->update($tablename, $modeldata);
+				$numRows = $db->getRowCount(); //number of affected rows. 0 = no record field updated
+				if($bool && $numRows){
+					$this->set_flash_msg("Record updated successfully", "success");
+					return $this->redirect("accept_reject2");
+				}
+				else{
+					if($db->getLastError()){
+						$this->set_page_error();
+					}
+					elseif(!$numRows){
+						//not an error, but no record was updated
+						$page_error = "No record updated";
+						$this->set_page_error($page_error);
+						$this->set_flash_msg($page_error, "warning");
+						return	$this->redirect("accept_reject2");
+					}
+				}
+			}
+		}
+		$db->where("accept_reject2.id", $rec_id);;
+		$data = $db->getOne($tablename, $fields);
+		$page_title = $this->view->page_title = "Edit  Accept Reject2";
+		if(!$data){
+			$this->set_page_error();
+		}
+		return $this->render_view("accept_reject2/edit.php", $data);
+	}
+	/**
+     * Delete record from the database
+	 * Support multi delete by separating record id by comma.
+     * @return BaseView
+     */
+	function delete($rec_id = null){
+		Csrf::cross_check();
+		$request = $this->request;
+		$db = $this->GetModel();
+		$tablename = $this->tablename;
+		$this->rec_id = $rec_id;
+		//form multiple delete, split record id separated by comma into array
+		$arr_rec_id = array_map('trim', explode(",", $rec_id));
+		$db->where("accept_reject2.id", $arr_rec_id, "in");
+		$bool = $db->delete($tablename);
+		if($bool){
+			$this->set_flash_msg("Record deleted successfully", "success");
+		}
+		elseif($db->getLastError()){
+			$page_error = $db->getLastError();
+			$this->set_flash_msg($page_error, "danger");
+		}
+		return	$this->redirect("accept_reject2");
+	}
+}

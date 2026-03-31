@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Login/Logout Logs</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <style>
+    #globalLoader {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(255, 255, 255, 0.8);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+  </style>
+</head>
+<body class="bg-light">
+
+  <div id="globalLoader">
+    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+      <span class="visually-hidden">Loading...</span>
+    </div>
+  </div>
+
+  <div class="container py-4">
+    <h2 class="mb-4">Login/Logout Logs Viewer</h2>
+
+    <form id="searchForm" class="row g-3 mb-4">
+      <div class="col-auto">
+        <input type="text" id="username" class="form-control" placeholder="Enter Username (e.g. Kanade96)" required>
+      </div>
+      <div class="col-auto">
+        <input type="date" id="logDate" class="form-control" value="<?= date('Y-m-d') ?>">
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary" id="searchBtn">Search Logs</button>
+      </div>
+    </form>
+
+    <div id="logResults" class="row row-cols-1 row-cols-md-2 g-4"></div>
+  </div>
+
+  <!-- Modal for DB Logs -->
+  <div class="modal fade" id="dbLogsModal" tabindex="-1" aria-labelledby="dbLogsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="dbLogsModalLabel">DB Logs</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" id="dbLogsContent">
+          <!-- Fallback text before loading -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const logContainer = document.getElementById('logResults');
+    const loader = document.getElementById('globalLoader');
+    const formElements = document.getElementById('searchForm').elements;
+
+    function toggleUI(disabled) {
+      loader.style.display = disabled ? 'flex' : 'none';
+      for (let i = 0; i < formElements.length; i++) {
+        formElements[i].disabled = disabled;
+      }
+    }
+
+    async function fetchLogs(date, username) {
+      toggleUI(true);
+      logContainer.innerHTML = `
+        <div class="col-12 text-center py-4">
+          <div class="spinner-border text-primary" role="status"></div>
+          <div>Loading logs...</div>
+        </div>
+      `;
+
+      let index = 0;
+      let foundLogs = [];
+      const baseURL = `logs/login_logout_${date}`;
+
+      while (true) {
+        const url = baseURL + (index === 0 ? '.json' : `_${index}.json`);
+        try {
+          const response = await fetch(url);
+          if (!response.ok) break;
+          const logs = await response.json();
+          const filtered = logs.filter(log => log.user_info?.name?.toLowerCase() === username.toLowerCase());
+          foundLogs.push(...filtered);
+        } catch {
+          break;
+        }
+        index++;
+      }
+
+      renderLogs(foundLogs);
+      toggleUI(false);
+    }
+
+    function renderLogs(logs) {
+      logContainer.innerHTML = '';
+      if (logs.length === 0) {
+        logContainer.innerHTML = '<div class="alert alert-warning">No logs found for the user.</div>';
+        return;
+      }
+
+      logs.forEach(log => {
+        const card = document.createElement('div');
+        card.className = 'col';
+        const dateOnly = new Date(log.timestamp).toISOString().split("T")[0];
+
+        card.innerHTML = `
+          <div class="card shadow-sm border-start border-${log.type === 'LOGINSCS' ? 'success' : 'danger'} border-4">
+            <div class="card-body">
+              <h5 class="card-title">${log.user_info.user_full_name}</h5>
+              <h6 class="card-subtitle mb-2 text-muted">${log.user_info.name} (${log.type})</h6>
+              <p class="card-text mb-1"><strong>Time:</strong> ${new Date(log.timestamp).toLocaleString()}</p>
+              <p class="card-text mb-1"><strong>IP:</strong> ${log.ip}</p>
+              <p class="card-text mb-1"><strong>Email:</strong> ${log.user_info.email}</p>
+              <p class="card-text mb-1"><strong>Mobile:</strong> ${log.user_info.mobile}</p>
+              <p class="card-text mb-1"><strong>URL:</strong> ${log.url}</p>
+              <p class="card-text mb-1"><strong>Method:</strong> ${log.method}</p>
+              <p class="card-text"><strong>User Agent:</strong><br>${log.user_agent}</p>
+              <button class="btn btn-outline-secondary btn-sm mt-3" onclick="viewDbLogs('${dateOnly}', '${log.user_id}')">View DB Logs</button>
+            </div>
+          </div>
+        `;
+        logContainer.appendChild(card);
+      });
+    }
+
+    document.getElementById('searchForm').addEventListener('submit', e => {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const logDate = document.getElementById('logDate').value;
+      if (username && logDate) {
+        fetchLogs(logDate, username);
+      }
+    });
+
+    async function viewDbLogs(date, uid) {
+      toggleUI(true);  // Show loader and disable buttons
+
+      const basePath = `app/models/dblogs/${date}/${uid}/log_`;
+      const modalBody = document.getElementById('dbLogsContent');
+      let logsHtml = '';
+      let index = 1;
+
+      while (true) {
+        const filePath = basePath + index + '.txt';
+        try {
+          const response = await fetch(filePath);
+          const text = await response.text();
+          if (text.includes("404") || text.includes("Not Found") || text.trim() === "") break;
+
+          logsHtml += `
+  <div class="mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-1">
+      <h6 class="text-primary mb-0">Log ${index}</h6>
+      <a href="${filePath}" class="btn btn-sm btn-outline-primary" download target="_blank">
+        ⬇ Download
+      </a>
+    </div>
+    <pre class="bg-light p-2 border rounded" style="max-height: 200px; overflow:auto;">${text}</pre>
+  </div>
+`;
+
+        } catch {
+          break;
+        }
+        index++;
+      }
+
+      modalBody.innerHTML = logsHtml || '<div class="alert alert-warning">No DB log files found.</div>';
+      const dbLogsModal = new bootstrap.Modal(document.getElementById('dbLogsModal'));
+      dbLogsModal.show();
+
+      toggleUI(false); // Re-enable UI
+    }
+  </script>
+</body>
+</html>
